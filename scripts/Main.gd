@@ -89,12 +89,11 @@ func _on_window_mode_pressed() -> void:
 
 
 func _on_3d_view_pressed() -> void:
-    # Ha már 3D-ben vagyunk, ugyanazzal a gombbal lépjünk vissza 2D-be
     if in_3d:
         _show_2d()
         return
 
-    var poly: PackedVector2Array = current_room_polygon
+    var poly: PackedVector2Array = editor2d.call("get_room_polygon") as PackedVector2Array
     if poly.size() == 0:
         var polys: Array = editor2d.call("get_room_polygons") as Array
         if polys.size() > 0:
@@ -117,6 +116,7 @@ func _on_3d_view_pressed() -> void:
     )
 
     _show_3d()
+
 
 func _on_opening_placed(is_door: bool) -> void:
     # Ajtó/ablak lerakása után automatikusan nyissuk meg a panelt
