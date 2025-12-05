@@ -1,0 +1,30 @@
+[gd_scene load_steps=4 format=3 uid="uid://da73aqqgqmv7l"]
+
+[ext_resource type="Script" uid="uid://bobpam4o3ce8h" path="res://scripts/Main.gd" id="1_r0du0"]
+[ext_resource type="Script" uid="uid://iqj36lg8t2n0" path="res://scripts/Editor2d.gd" id="2_cm0pq"]
+[ext_resource type="Script" uid="uid://btngkvvd3i2qf" path="res://scripts/Room3D.gd" id="3_fos0i"]
+
+[node name="Main" type="Node"]
+script = ExtResource("1_r0du0")
+
+[node name="Editor2D" type="Node2D" parent="."]
+script = ExtResource("2_cm0pq")
+
+[node name="Room3D" type="Node3D" parent="."]
+script = ExtResource("3_fos0i")
+
+[node name="Camera3D" type="Camera3D" parent="Room3D"]
+
+[node name="DirectionalLight2D" type="DirectionalLight2D" parent="Room3D"]
+
+[node name="Walls" type="Node3D" parent="Room3D"]
+
+[node name="Floor" type="MeshInstance3D" parent="Room3D"]
+
+[node name="Devices" type="Node3D" parent="Room3D"]
+
+[node name="CanvasLayer" type="CanvasLayer" parent="."]
+
+[node name="HBoxContainer" type="HBoxContainer" parent="CanvasLayer"]
+offset_right = 40.0
+offset_bottom = 40.0
