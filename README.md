@@ -166,7 +166,7 @@ func _compute_room_polygon() -> PackedVector2Array:
     var point_lookup: Dictionary = {}
     var adjacency: Dictionary = {}
 
-    var merge_eps: float = 2.5
+    var merge_eps: float = 0.5
 
     for w_var in walls:
         var w: Dictionary = w_var
@@ -188,6 +188,8 @@ func _compute_room_polygon() -> PackedVector2Array:
             adjacency[k1].append(k2)
         if not (k1 in adjacency[k2]):
             adjacency[k2].append(k1)
+        adjacency[k1].append(k2)
+        adjacency[k2].append(k1)
 
     if adjacency.size() < 3:
         return PackedVector2Array()
@@ -199,7 +201,7 @@ func _compute_room_polygon() -> PackedVector2Array:
             return PackedVector2Array()
 
     # Járjuk végig a ciklust, hogy sorrendezett poligont kapjunk
-    var start_key: String = _find_start_point_key(point_lookup)
+    var start_key: String = adjacency.keys()[0]
     var prev_key: String = ""
     var current_key: String = start_key
     var polygon := PackedVector2Array()
@@ -207,7 +209,11 @@ func _compute_room_polygon() -> PackedVector2Array:
     for i in range(adjacency.size() + 2):
         polygon.append(point_lookup[current_key])
         var neighbors: Array = adjacency[current_key]
-        var next_key: String = _pick_next_corner(prev_key, current_key, neighbors, point_lookup)
+        var next_key: String = ""
+        for n in neighbors:
+            if String(n) != prev_key:
+                next_key = String(n)
+                break
 
         if next_key == "":
             return PackedVector2Array()
