@@ -183,6 +183,7 @@ func _on_left_released(pos: Vector2) -> void:
         }
         next_wall_id += 1
         walls.append(wall)
+        _mark_rooms_dirty()
         emit_signal("project_changed")
         queue_redraw()
 
@@ -644,6 +645,8 @@ func load_project() -> void:
     doors = d.get("doors", []) as Array
     windows = d.get("windows", []) as Array
     devices = d.get("devices", []) as Array
+
+    _mark_rooms_dirty()
 
     queue_redraw()
     emit_signal("project_changed")
