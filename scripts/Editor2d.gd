@@ -13,6 +13,11 @@ var doors: Array[Dictionary] = []      # { id, wall_id, offset_cm, width_cm, hei
 var windows: Array[Dictionary] = []    # same as doors
 var devices: Array[Dictionary] = []    # { id, wall_id, type, width_cm, height_cm, dist_floor_cm, dist_left_cm }
 
+# Rooms
+var room_polygons: Array[PackedVector2Array] = []
+var selected_room_index: int = -1
+var rooms_dirty: bool = true
+
 # Editor state
 enum ToolMode {NONE, WALL, DOOR, WINDOW }
 var mode: int = ToolMode.NONE
@@ -133,8 +138,8 @@ func _on_left_pressed(pos: Vector2) -> void:
 
     match mode:
         ToolMode.NONE:
-            # Nothing to do, panning already handled in _unhandled_input
-            pass
+            # Room selection when no drawing tool is active
+            select_room_from_point(pos)
 
         ToolMode.WALL:
             is_drawing_wall = true
@@ -179,6 +184,7 @@ func _on_left_released(pos: Vector2) -> void:
         }
         next_wall_id += 1
         walls.append(wall)
+        _mark_rooms_dirty()
         emit_signal("project_changed")
         queue_redraw()
 
@@ -301,7 +307,7 @@ func _draw() -> void:
     _draw_walls()
     _draw_openings()
     _draw_current_wall_preview()
-    _draw_room_outline()
+    _draw_room_outlines()
 
 
 func _draw_grid() -> void:
@@ -406,21 +412,21 @@ func _draw_current_wall_preview() -> void:
 
 # ---- room detection & drawing ----
 
-# ---- room polygon helper for 3D view ----
-
-func _compute_room_polygon() -> PackedVector2Array:
+func _build_graph() -> Dictionary:
     var merged_points: Array[Vector2] = []
     var point_lookup: Dictionary = {}
     var adjacency: Dictionary = {}
-
-    var merge_eps: float = 0.5
+    var merge_eps: float = 2.5
 
     for w_var in walls:
         var w: Dictionary = w_var
         var raw_p1: Vector2 = w.get("p1") as Vector2
         var raw_p2: Vector2 = w.get("p2") as Vector2
-        var p1: Vector2 = _merge_point(raw_p1, merged_points, merge_eps)
-        var p2: Vector2 = _merge_point(raw_p2, merged_points, merge_eps)
+        # Snap here as well so externally loaded data also closes corners cleanly
+        var snapped_p1 := snap_world_to_grid(raw_p1)
+        var snapped_p2 := snap_world_to_grid(raw_p2)
+        var p1: Vector2 = _merge_point(snapped_p1, merged_points, merge_eps)
+        var p2: Vector2 = _merge_point(snapped_p2, merged_points, merge_eps)
 
         var k1 := _point_key(p1)
         var k2 := _point_key(p2)
@@ -431,71 +437,277 @@ func _compute_room_polygon() -> PackedVector2Array:
             adjacency[k1] = []
         if not adjacency.has(k2):
             adjacency[k2] = []
-        adjacency[k1].append(k2)
-        adjacency[k2].append(k1)
+        if not adjacency[k1].has(k2):
+            adjacency[k1].append(k2)
+        if not adjacency[k2].has(k1):
+            adjacency[k2].append(k1)
 
+    return {
+        "points": point_lookup,
+        "adj": adjacency
+    }
+
+
+func _mark_rooms_dirty() -> void:
+    rooms_dirty = true
+    selected_room_index = -1
+
+
+func _polygon_centroid(poly: PackedVector2Array) -> Vector2:
+    var area: float = 0.0
+    var cx: float = 0.0
+    var cy: float = 0.0
+
+    for i in range(poly.size()):
+        var p0 := poly[i]
+        var p1 := poly[(i + 1) % poly.size()]
+        var cross := p0.x * p1.y - p1.x * p0.y
+        area += cross
+        cx += (p0.x + p1.x) * cross
+        cy += (p0.y + p1.y) * cross
+
+    if abs(area) < 0.0001:
+        return poly[0] if poly.size() > 0 else Vector2.ZERO
+
+    var scale := 1.0 / (3.0 * area)
+    return Vector2(cx * scale, cy * scale)
+
+
+func _next_neighbor(prev_key: String, current_key: String, adjacency: Dictionary, point_lookup: Dictionary) -> String:
+    var neighbors: Array = adjacency.get(current_key, [])
+    if neighbors.size() == 0:
+        return ""
+
+    var current: Vector2 = point_lookup[current_key]
+    var prev: Vector2 = point_lookup.get(prev_key, current)
+    var best_key: String = ""
+    var best_diff: float = TAU
+    var angle_prev: float = atan2(prev.y - current.y, prev.x - current.x)
+
+    for n in neighbors:
+        var n_key := String(n)
+        if n_key == prev_key and neighbors.size() == 1:
+            continue
+        var neighbor: Vector2 = point_lookup[n_key]
+        var angle_next: float = atan2(neighbor.y - current.y, neighbor.x - current.x)
+        var diff: float = fposmod(angle_next - angle_prev, TAU)
+        if diff == 0.0:
+            diff = TAU
+        if diff < best_diff:
+            best_diff = diff
+            best_key = n_key
+
+    return best_key
+
+
+func _compute_room_polygons() -> Array[PackedVector2Array]:
+    var graph := _build_graph()
+    var point_lookup: Dictionary = graph.get("points", {})
+    var adjacency: Dictionary = graph.get("adj", {})
+
+    var polygons: Array[PackedVector2Array] = []
+    if adjacency.size() < 3:
+        return polygons
+
+    var visited: Dictionary = {}
+
+    for from_key in adjacency.keys():
+        for to_key in adjacency[from_key]:
+            var dir_key := String(from_key) + "->" + String(to_key)
+            if visited.has(dir_key):
+                continue
+
+            var polygon := PackedVector2Array()
+            var start_from: String = String(from_key)
+            var start_to: String = String(to_key)
+            var current_from: String = start_from
+            var current_to: String = start_to
+
+            var safety: int = adjacency.size() * 8
+            while safety > 0:
+                safety -= 1
+                visited[current_from + "->" + current_to] = true
+                polygon.append(point_lookup[current_from])
+
+                var next_key := _next_neighbor(current_from, current_to, adjacency, point_lookup)
+                if next_key == "":
+                    break
+
+                current_from = current_to
+                current_to = next_key
+
+                if current_from == start_from and current_to == start_to:
+                    polygon.append(point_lookup[current_from])
+                    break
+
+            if polygon.size() >= 4:
+                polygon.remove_at(polygon.size() - 1)  # remove duplicate closing point
+                var area := Geometry2D.signed_polygon_area(polygon)
+                if abs(area) > 0.1:
+                    if area < 0.0:
+                        polygon = polygon.reversed()
+
+                    var is_duplicate: bool = false
+                    for existing in polygons:
+                        if existing.size() != polygon.size():
+                            continue
+
+                        var offset := -1
+                        for i in range(existing.size()):
+                            if polygon[0].distance_to(existing[i]) <= 0.1:
+                                offset = i
+                                break
+
+                        if offset == -1:
+                            continue
+
+                        var all_close := true
+                        for i in range(polygon.size()):
+                            var idx := (i + offset) % polygon.size()
+                            if abs(polygon[i].distance_to(existing[idx])) > 0.1:
+                                all_close = false
+                                break
+
+                        if all_close:
+                            is_duplicate = true
+                            break
+                    if not is_duplicate:
+                        polygons.append(polygon)
+
+    if polygons.size() <= 1:
+        return polygons
+
+    # Remove likely outer hull if it contains other polygons (avoid dropping large actual rooms)
+    var areas: Array[float] = []
+    for poly in polygons:
+        areas.append(abs(Geometry2D.signed_polygon_area(poly)))
+
+    var outer_index: int = -1
+    var max_area: float = -1.0
+    for i in range(polygons.size()):
+        if areas[i] > max_area:
+            max_area = areas[i]
+            outer_index = i
+
+    if outer_index >= 0:
+        var candidate := polygons[outer_index]
+        var contains_other: bool = false
+        for j in range(polygons.size()):
+            if j == outer_index:
+                continue
+            var test_point: Vector2 = _polygon_centroid(polygons[j])
+            if Geometry2D.is_point_in_polygon(test_point, candidate):
+                contains_other = true
+                break
+
+        if contains_other:
+            polygons.remove_at(outer_index)
+
+    if polygons.is_empty():
+        var fallback := _build_single_loop_polygon(adjacency, point_lookup)
+        if fallback.size() >= 3:
+            polygons.append(fallback)
+
+    return polygons
+
+
+func _build_single_loop_polygon(adjacency: Dictionary, point_lookup: Dictionary) -> PackedVector2Array:
     if adjacency.size() < 3:
         return PackedVector2Array()
 
-    # Zárt szoba: minden csúcs foka legyen 2
     for key in adjacency.keys():
-        var degree: int = (adjacency[key] as Array).size()
-        if degree != 2:
-            return PackedVector2Array()
+        var neighbors: Array = adjacency.get(key, [])
+        if neighbors.size() != 2:
+            return PackedVector2Array()  # not a simple loop
 
-    # Járjuk végig a ciklust, hogy sorrendezett poligont kapjunk
-    var start_key: String = adjacency.keys()[0]
-    var prev_key: String = ""
+    var start_key: String = String(adjacency.keys()[0])
+    var prev_key: String = String(adjacency[start_key][0])
     var current_key: String = start_key
     var polygon := PackedVector2Array()
+    var max_steps: int = adjacency.size() * 2
 
-    for i in range(adjacency.size() + 2):
+    while max_steps > 0:
+        max_steps -= 1
         polygon.append(point_lookup[current_key])
-        var neighbors: Array = adjacency[current_key]
-        var next_key: String = ""
-        for n in neighbors:
-            if String(n) != prev_key:
-                next_key = String(n)
-                break
-
-        if next_key == "":
-            return PackedVector2Array()
-
-        if next_key == start_key:
-            if polygon.size() >= 3:
-                return polygon
-            return PackedVector2Array()
-
+        var neighbors: Array = adjacency.get(current_key, [])
+        var next_key: String = String(neighbors[0]) if String(neighbors[0]) != prev_key else String(neighbors[1])
         prev_key = current_key
         current_key = next_key
+        if current_key == start_key:
+            break
 
-    return PackedVector2Array()
+    if polygon.size() < 3:
+        return PackedVector2Array()
+
+    var closed := PackedVector2Array(polygon)
+    closed.append(polygon[0])
+    if Geometry2D.is_polygon_self_intersecting(closed):
+        return PackedVector2Array()
+
+    if Geometry2D.signed_polygon_area(polygon) < 0.0:
+        polygon = polygon.reversed()
+
+    return polygon
+
+
+func get_room_polygons() -> Array[PackedVector2Array]:
+    if rooms_dirty:
+        room_polygons = _compute_room_polygons()
+        rooms_dirty = false
+    if selected_room_index >= room_polygons.size():
+        selected_room_index = -1
+    return room_polygons
 
 
 func get_room_polygon() -> PackedVector2Array:
-    return _compute_room_polygon()
+    var polys: Array[PackedVector2Array] = get_room_polygons()
+    if selected_room_index >= 0 and selected_room_index < polys.size():
+        return polys[selected_room_index]
+    if polys.size() > 0:
+        return polys[0]
+    return PackedVector2Array()
 
-func _draw_room_outline() -> void:
-    var poly: PackedVector2Array = get_room_polygon()
-    if poly.size() < 3:
-        return
 
-    var screen_poly: PackedVector2Array = PackedVector2Array()
-    for p in poly:
-        screen_poly.append(world_to_screen(p))
+func _draw_room_outlines() -> void:
+    var polys: Array[PackedVector2Array] = get_room_polygons()
+    for i in range(polys.size()):
+        var poly: PackedVector2Array = polys[i]
+        if poly.size() < 3:
+            continue
 
-    draw_colored_polygon(screen_poly, Color(1, 1, 0, 0.05))
-    var closed := PackedVector2Array(screen_poly)
-    closed.append(screen_poly[0])
-    draw_polyline(closed, Color(1, 0.7, 0), 2.0)
+        var screen_poly: PackedVector2Array = PackedVector2Array()
+        for p in poly:
+            screen_poly.append(world_to_screen(p))
+
+        var fill_color := Color(1, 1, 0, 0.05)
+        var line_color := Color(1, 0.7, 0)
+        if i == selected_room_index:
+            fill_color = Color(0.4, 0.8, 1.0, 0.1)
+            line_color = Color(0.2, 0.4, 1.0)
+
+        draw_colored_polygon(screen_poly, fill_color)
+        var closed := PackedVector2Array(screen_poly)
+        closed.append(screen_poly[0])
+        draw_polyline(closed, line_color, 2.0)
+
 
 func select_room_from_point(screen_pos: Vector2) -> void:
-    var poly: PackedVector2Array = get_room_polygon()
-    if poly.size() < 3:
-        return
+    var polys: Array[PackedVector2Array] = get_room_polygons()
     var world_pos: Vector2 = screen_to_world(screen_pos)
-    if Geometry2D.is_point_in_polygon(world_pos, poly):
-        emit_signal("room_selected", poly)
+    selected_room_index = -1
+
+    for i in range(polys.size()):
+        var poly: PackedVector2Array = polys[i]
+        if poly.size() < 3:
+            continue
+        if Geometry2D.is_point_in_polygon(world_pos, poly):
+            selected_room_index = i
+            emit_signal("room_selected", poly)
+            queue_redraw()
+            return
+
+    emit_signal("room_selected", PackedVector2Array())
+    queue_redraw()
 
 
 # ---- saving / loading ----
@@ -549,6 +761,8 @@ func load_project() -> void:
     doors = d.get("doors", []) as Array
     windows = d.get("windows", []) as Array
     devices = d.get("devices", []) as Array
+
+    _mark_rooms_dirty()
 
     queue_redraw()
     emit_signal("project_changed")

@@ -94,10 +94,14 @@ func _on_3d_view_pressed() -> void:
         _show_2d()
         return
 
-    # Mindig az aktuális falakból számolunk szobapolygont
-    var poly: PackedVector2Array = editor2d.call("get_room_polygon") as PackedVector2Array
+    var poly: PackedVector2Array = current_room_polygon
     if poly.size() == 0:
-        push_warning("Nincs zárt szoba a 3D nézethez. Zárd körbe a falakat.")
+        var polys: Array = editor2d.call("get_room_polygons") as Array
+        if polys.size() > 0:
+            poly = polys[0]
+
+    if poly.size() == 0:
+        push_warning("Nincs zárt szoba a 3D nézethez. Zárd körbe a falakat, és kattints egy szobára a kiválasztáshoz.")
         btn_3d.button_pressed = false
         return
 
@@ -122,8 +126,7 @@ func _on_room_selected(polygon: PackedVector2Array) -> void:
     current_room_polygon = polygon
 
 func _on_project_changed() -> void:
-    # For auto-save later; currently empty.
-    pass
+    current_room_polygon = PackedVector2Array()
 
 func _on_save_pressed() -> void:
     editor2d.call("save_project")
