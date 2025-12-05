@@ -413,8 +413,7 @@ func _compute_room_polygon() -> PackedVector2Array:
     var point_lookup: Dictionary = {}
     var adjacency: Dictionary = {}
 
-    # Toleráljunk kisebb eltérést, hogy a majdnem összeérő falak is bezáródjanak.
-    var merge_eps: float = 2.5
+    var merge_eps: float = 0.5
 
     for w_var in walls:
         var w: Dictionary = w_var
@@ -432,12 +431,8 @@ func _compute_room_polygon() -> PackedVector2Array:
             adjacency[k1] = []
         if not adjacency.has(k2):
             adjacency[k2] = []
-
-        # Ne engedjük duplikált élt (ugyanaz a két pont oda-vissza).
-        if not (k2 in adjacency[k1]):
-            adjacency[k1].append(k2)
-        if not (k1 in adjacency[k2]):
-            adjacency[k2].append(k1)
+        adjacency[k1].append(k2)
+        adjacency[k2].append(k1)
 
     if adjacency.size() < 3:
         return PackedVector2Array()
@@ -449,16 +444,19 @@ func _compute_room_polygon() -> PackedVector2Array:
             return PackedVector2Array()
 
     # Járjuk végig a ciklust, hogy sorrendezett poligont kapjunk
-    var start_key: String = _find_start_point_key(point_lookup)
+    var start_key: String = adjacency.keys()[0]
     var prev_key: String = ""
     var current_key: String = start_key
     var polygon := PackedVector2Array()
 
     for i in range(adjacency.size() + 2):
         polygon.append(point_lookup[current_key])
-
         var neighbors: Array = adjacency[current_key]
-        var next_key: String = _pick_next_corner(prev_key, current_key, neighbors, point_lookup)
+        var next_key: String = ""
+        for n in neighbors:
+            if String(n) != prev_key:
+                next_key = String(n)
+                break
 
         if next_key == "":
             return PackedVector2Array()
@@ -472,56 +470,6 @@ func _compute_room_polygon() -> PackedVector2Array:
         current_key = next_key
 
     return PackedVector2Array()
-
-
-func _find_start_point_key(point_lookup: Dictionary) -> String:
-    # Konzisztens indulási pont: legalacsonyabb y, azon belül legkisebb x.
-    var best_key := ""
-    var best_point := Vector2(INF, INF)
-    for key in point_lookup.keys():
-        var p: Vector2 = point_lookup[key]
-        if p.y < best_point.y or (is_equal_approx(p.y, best_point.y) and p.x < best_point.x):
-            best_point = p
-            best_key = key
-    return best_key
-
-
-func _pick_next_corner(prev_key: String, current_key: String, neighbors: Array, point_lookup: Dictionary) -> String:
-    if neighbors.size() == 0:
-        return ""
-
-    if prev_key == "":
-        # Első lépés: vegyük a balra eső szomszédot, hogy konzisztens legyen az óramutató járása.
-        var best := ""
-        var best_angle := INF
-        for n in neighbors:
-            var dir := (point_lookup[String(n)] as Vector2) - (point_lookup[current_key] as Vector2)
-            var angle := atan2(dir.y, dir.x)
-            if angle < best_angle:
-                best_angle = angle
-                best = String(n)
-        return best
-
-    var prev_point: Vector2 = point_lookup[prev_key]
-    var current_point: Vector2 = point_lookup[current_key]
-    var incoming: Vector2 = (current_point - prev_point).normalized()
-
-    var chosen := ""
-    var min_angle := TAU
-
-    for n in neighbors:
-        if String(n) == prev_key:
-            continue
-
-        var candidate: Vector2 = point_lookup[String(n)]
-        var outgoing: Vector2 = (candidate - current_point).normalized()
-        # Válasszuk a legkisebb pozitív elfordulást balra (counter-clockwise), hogy körbejárjuk a szobát.
-        var angle_delta := fmod(atan2(outgoing.y, outgoing.x) - atan2(incoming.y, incoming.x) + TAU, TAU)
-        if angle_delta < min_angle:
-            min_angle = angle_delta
-            chosen = String(n)
-
-    return chosen
 
 
 func get_room_polygon() -> PackedVector2Array:
