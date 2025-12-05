@@ -227,7 +227,7 @@ func _compute_room_polygon() -> PackedVector2Array:
 
 `get_room_polygon()` annyit tesz, hogy meghívja a fenti számítást és visszaadja az eredményt.
 
-Tehát:
+`get_room_polygon()` annyit tesz, hogy meghívja a fenti számítást és visszaadja az eredményt.
 
 - A falak végpontjait **összepárosítjuk**, kis toleranciával egyesítjük a közös pontokat.
 - Ha minden csúcson pontosan két fal találkozik, végigjárjuk a ciklust → ez lesz a szoba poligonja.
