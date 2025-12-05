@@ -16,7 +16,6 @@ var devices: Array[Dictionary] = []    # { id, wall_id, type, width_cm, height_c
 # Rooms
 var room_polygons: Array[PackedVector2Array] = []
 var selected_room_index: int = -1
-var rooms_dirty: bool = true
 
 # Editor state
 enum ToolMode {NONE, WALL, DOOR, WINDOW }
@@ -445,31 +444,6 @@ func _build_graph() -> Dictionary:
     }
 
 
-func _mark_rooms_dirty() -> void:
-    rooms_dirty = true
-    selected_room_index = -1
-
-
-func _polygon_centroid(poly: PackedVector2Array) -> Vector2:
-    var area: float = 0.0
-    var cx: float = 0.0
-    var cy: float = 0.0
-
-    for i in range(poly.size()):
-        var p0 := poly[i]
-        var p1 := poly[(i + 1) % poly.size()]
-        var cross := p0.x * p1.y - p1.x * p0.y
-        area += cross
-        cx += (p0.x + p1.x) * cross
-        cy += (p0.y + p1.y) * cross
-
-    if abs(area) < 0.0001:
-        return poly[0] if poly.size() > 0 else Vector2.ZERO
-
-    var scale := 1.0 / (3.0 * area)
-    return Vector2(cx * scale, cy * scale)
-
-
 func _next_neighbor(prev_key: String, current_key: String, adjacency: Dictionary, point_lookup: Dictionary) -> String:
     var neighbors: Array = adjacency.get(current_key, [])
     if neighbors.size() == 0:
@@ -548,65 +522,22 @@ func _compute_room_polygons() -> Array[PackedVector2Array]:
                     for existing in polygons:
                         if existing.size() != polygon.size():
                             continue
-
-                        var offset := -1
-                        for i in range(existing.size()):
-                            if polygon[0].distance_to(existing[i]) <= 0.1:
-                                offset = i
-                                break
-
-                        if offset == -1:
-                            continue
-
                         var all_close := true
                         for i in range(polygon.size()):
-                            var idx := (i + offset) % polygon.size()
-                            if abs(polygon[i].distance_to(existing[idx])) > 0.1:
+                            if abs(polygon[i].distance_to(existing[i])) > 0.1:
                                 all_close = false
                                 break
-
                         if all_close:
                             is_duplicate = true
                             break
                     if not is_duplicate:
                         polygons.append(polygon)
 
-    if polygons.size() <= 1:
-        return polygons
-
-    # Remove likely outer hull if it contains other polygons (avoid dropping large actual rooms)
-    var areas: Array[float] = []
-    for poly in polygons:
-        areas.append(abs(Geometry2D.signed_polygon_area(poly)))
-
-    var outer_index: int = -1
-    var max_area: float = -1.0
-    for i in range(polygons.size()):
-        if areas[i] > max_area:
-            max_area = areas[i]
-            outer_index = i
-
-    if outer_index >= 0:
-        var candidate := polygons[outer_index]
-        var contains_other: bool = false
-        for j in range(polygons.size()):
-            if j == outer_index:
-                continue
-            var test_point: Vector2 = _polygon_centroid(polygons[j])
-            if Geometry2D.is_point_in_polygon(test_point, candidate):
-                contains_other = true
-                break
-
-        if contains_other:
-            polygons.remove_at(outer_index)
-
     return polygons
 
 
 func get_room_polygons() -> Array[PackedVector2Array]:
-    if rooms_dirty:
-        room_polygons = _compute_room_polygons()
-        rooms_dirty = false
+    room_polygons = _compute_room_polygons()
     if selected_room_index >= room_polygons.size():
         selected_room_index = -1
     return room_polygons
