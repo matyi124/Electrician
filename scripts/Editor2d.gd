@@ -483,14 +483,18 @@ func save_project() -> void:
     var data: Dictionary = get_project_data()
     var json: String = JSON.stringify(data)
 
-    var dir := DirAccess.open("user://")
-    if dir and not dir.dir_exists("projektek"):
-        dir.make_dir("projektek")
+    var err := DirAccess.make_dir_recursive_absolute("user://projektek")
+    if err != OK:
+        push_warning("Nem sikerült létrehozni a mentési mappát (" + str(err) + ").")
+        return
 
     var f := FileAccess.open("user://projektek/alap.json", FileAccess.WRITE)
-    if f:
-        f.store_string(json)
-        f.close()
+    if f == null:
+        push_warning("Nem sikerült megnyitni a mentési fájlt írásra.")
+        return
+
+    f.store_string(json)
+    f.close()
 
 
 func load_project() -> void:
@@ -500,17 +504,21 @@ func load_project() -> void:
 
     var f := FileAccess.open("user://projektek/alap.json", FileAccess.READ)
     if f == null:
+        push_warning("Nem sikerült megnyitni a mentési fájlt olvasásra.")
         return
     var text: String = f.get_as_text()
     f.close()
 
     var result : Variant = JSON.parse_string(text)
-    if result is Dictionary:
-        var d: Dictionary = result
-        walls = d.get("walls", []) as Array
-        doors = d.get("doors", []) as Array
-        windows = d.get("windows", []) as Array
-        devices = d.get("devices", []) as Array
+    if result is not Dictionary:
+        push_warning("Hibás vagy sérült projektfájl.")
+        return
 
-        queue_redraw()
-        emit_signal("project_changed")
+    var d: Dictionary = result
+    walls = d.get("walls", []) as Array
+    doors = d.get("doors", []) as Array
+    windows = d.get("windows", []) as Array
+    devices = d.get("devices", []) as Array
+
+    queue_redraw()
+    emit_signal("project_changed")
