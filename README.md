@@ -184,6 +184,10 @@ func _compute_room_polygon() -> PackedVector2Array:
             adjacency[k1] = []
         if not adjacency.has(k2):
             adjacency[k2] = []
+        if not (k2 in adjacency[k1]):
+            adjacency[k1].append(k2)
+        if not (k1 in adjacency[k2]):
+            adjacency[k2].append(k1)
         adjacency[k1].append(k2)
         adjacency[k2].append(k1)
 
@@ -227,11 +231,12 @@ func _compute_room_polygon() -> PackedVector2Array:
 
 `get_room_polygon()` annyit tesz, hogy meghívja a fenti számítást és visszaadja az eredményt.
 
-`get_room_polygon()` annyit tesz, hogy meghívja a fenti számítást és visszaadja az eredményt.
+Tehát:
 
-- A falak végpontjait **összepárosítjuk**, kis toleranciával egyesítjük a közös pontokat.
-- Ha minden csúcson pontosan két fal találkozik, végigjárjuk a ciklust → ez lesz a szoba poligonja.
-- Bonyolultabb, elágazó alaprajzokra jelenleg még nem alkalmas, de a körbezárt helyiség most már megbízhatóbban felismerhető.
+- A falak végpontjait **összepárosítjuk**, 5 cm-es toleranciával egyesítjük a közeli pontokat.
+- Ha valamelyik sarok csak majdnem ér össze, a program megpróbálja automatikusan összekapcsolni, hogy a hurok bezáródjon.
+- Csak akkor ad vissza poligont, ha minden csúcspont foka 2, és a bejárás az összes sarokig eljut.
+- Bonyolultabb, elágazó alaprajzokra jelenleg még nem alkalmas, de a körbezárt helyiség most már megbízhatóbban felismerhető a nagyobb tolerancia, az automatikus sarokzárás és a stabil bejárási irány miatt.
 
 ### 4.2 3D gomb (Main.gd)
 
@@ -382,3 +387,9 @@ A `Editor2d.gd.get_project_data()` adja vissza:
 - Ajtók/ablakok vizuális jelzése 3D-ben, fal kivágása.
 - Villamos berendezések (konnektor/switch) felvétele 2D-ben és megjelenítése 3D-ben.
 - Több projekt, fájlválasztó a `user://projektek` mappából.
+
+---
+
+## Verziótörténet
+
+- v0.1.0 – Zárt szoba felismerésének javítása (nagyobb tolerancia, automatikus sarokzárás), README bővítése.
