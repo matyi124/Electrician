@@ -162,35 +162,74 @@ A szobát nagyon egyszerűen kezeljük:
 
 ```gdscript
 func _compute_room_polygon() -> PackedVector2Array:
-    var points: PackedVector2Array = PackedVector2Array()
+    var merged_points: Array[Vector2] = []
+    var point_lookup: Dictionary = {}
+    var adjacency: Dictionary = {}
+
+    var merge_eps: float = 2.5
+
     for w_var in walls:
         var w: Dictionary = w_var
-        var p1: Vector2 = w.get("p1") as Vector2
-        var p2: Vector2 = w.get("p2") as Vector2
-        points.append(p1)
-        points.append(p2)
+        var raw_p1: Vector2 = w.get("p1") as Vector2
+        var raw_p2: Vector2 = w.get("p2") as Vector2
+        var p1: Vector2 = _merge_point(raw_p1, merged_points, merge_eps)
+        var p2: Vector2 = _merge_point(raw_p2, merged_points, merge_eps)
 
-    if points.size() < 3:
+        var k1 := _point_key(p1)
+        var k2 := _point_key(p2)
+        point_lookup[k1] = p1
+        point_lookup[k2] = p2
+
+        if not adjacency.has(k1):
+            adjacency[k1] = []
+        if not adjacency.has(k2):
+            adjacency[k2] = []
+        if not (k2 in adjacency[k1]):
+            adjacency[k1].append(k2)
+        if not (k1 in adjacency[k2]):
+            adjacency[k2].append(k1)
+
+    if adjacency.size() < 3:
         return PackedVector2Array()
 
-    return Geometry2D.convex_hull(points)
+    # Zárt szoba: minden csúcs foka legyen 2
+    for key in adjacency.keys():
+        var degree: int = (adjacency[key] as Array).size()
+        if degree != 2:
+            return PackedVector2Array()
+
+    # Járjuk végig a ciklust, hogy sorrendezett poligont kapjunk
+    var start_key: String = _find_start_point_key(point_lookup)
+    var prev_key: String = ""
+    var current_key: String = start_key
+    var polygon := PackedVector2Array()
+
+    for i in range(adjacency.size() + 2):
+        polygon.append(point_lookup[current_key])
+        var neighbors: Array = adjacency[current_key]
+        var next_key: String = _pick_next_corner(prev_key, current_key, neighbors, point_lookup)
+
+        if next_key == "":
+            return PackedVector2Array()
+
+        if next_key == start_key:
+            if polygon.size() >= 3:
+                return polygon
+            return PackedVector2Array()
+
+        prev_key = current_key
+        current_key = next_key
+
+    return PackedVector2Array()
 ```
 
-`get_room_polygon()`:
-
-```gdscript
-func get_room_polygon() -> PackedVector2Array:
-    # Egyszerűen a falvégek konvex burka – elég prototípusnak
-    return _compute_room_polygon()
-```
+`get_room_polygon()` annyit tesz, hogy meghívja a fenti számítást és visszaadja az eredményt.
 
 Tehát:
 
-- A falak végpontjait összegyűjtjük,
-- **konvex burkot** számolunk (`Geometry2D.convex_hull`),
-- ez lesz a szoba alaprajza.
-
-Ez azt jelenti, hogy a rendszer **mindig “kívülről” körbehúzza** az összes falat – bonyolultabb, több helyiséges alaprajzokra jelenleg még nem alkalmas.
+- A falak végpontjait **összepárosítjuk**, kis toleranciával egyesítjük a közös pontokat.
+- Ha minden csúcson pontosan két fal találkozik, végigjárjuk a ciklust → ez lesz a szoba poligonja.
+- Bonyolultabb, elágazó alaprajzokra jelenleg még nem alkalmas, de a körbezárt helyiség most már megbízhatóbban felismerhető, mert a majdnem összeérő falvégeket is összevonjuk és a körbejárás irányát is rögzítjük.
 
 ### 4.2 3D gomb (Main.gd)
 
