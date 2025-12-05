@@ -394,4 +394,3 @@ A `Editor2d.gd.get_project_data()` adja vissza:
 
 - v0.1.0 – Zárt szoba felismerésének javítása (nagyobb tolerancia, automatikus sarokzárás), README bővítése.
 - v0.2.0 – Többszobás detektálás stabilizálása, külső kontúr kiszűrése, kiválasztott szobák frissítése betöltéskor.
-- v0.3.0 – Egyszerű zárt falhurkok megbízható felismerése és a 3D falak tájolási hibájának javítása.
