@@ -74,6 +74,17 @@ func snap_world_to_grid(p: Vector2) -> Vector2:
         round(p.y / s) * s
     )
 
+func _point_key(p: Vector2) -> String:
+    var snapped := p.snapped(Vector2(0.01, 0.01))
+    return str(snapped.x) + ":" + str(snapped.y)
+
+func _merge_point(p: Vector2, merged: Array[Vector2], eps: float) -> Vector2:
+    for existing in merged:
+        if existing.distance_to(p) <= eps:
+            return existing
+    merged.append(p)
+    return p
+
 
 # ---- input ----
 
@@ -398,52 +409,71 @@ func _draw_current_wall_preview() -> void:
 # ---- room polygon helper for 3D view ----
 
 func _compute_room_polygon() -> PackedVector2Array:
-    var points: PackedVector2Array = PackedVector2Array()
+    var merged_points: Array[Vector2] = []
+    var point_lookup: Dictionary = {}
+    var adjacency: Dictionary = {}
+
+    var merge_eps: float = 0.5
 
     for w_var in walls:
         var w: Dictionary = w_var
-        var p1: Vector2 = w.get("p1") as Vector2
-        var p2: Vector2 = w.get("p2") as Vector2
-        points.append(p1)
-        points.append(p2)
+        var raw_p1: Vector2 = w.get("p1") as Vector2
+        var raw_p2: Vector2 = w.get("p2") as Vector2
+        var p1: Vector2 = _merge_point(raw_p1, merged_points, merge_eps)
+        var p2: Vector2 = _merge_point(raw_p2, merged_points, merge_eps)
 
-    if points.size() < 3:
+        var k1 := _point_key(p1)
+        var k2 := _point_key(p2)
+        point_lookup[k1] = p1
+        point_lookup[k2] = p2
+
+        if not adjacency.has(k1):
+            adjacency[k1] = []
+        if not adjacency.has(k2):
+            adjacency[k2] = []
+        adjacency[k1].append(k2)
+        adjacency[k2].append(k1)
+
+    if adjacency.size() < 3:
         return PackedVector2Array()
 
-    # Ebből lesz egy egyszerű konvex szoba – prototípusnak elég
-    return Geometry2D.convex_hull(points)
+    # Zárt szoba: minden csúcs foka legyen 2
+    for key in adjacency.keys():
+        var degree: int = (adjacency[key] as Array).size()
+        if degree != 2:
+            return PackedVector2Array()
+
+    # Járjuk végig a ciklust, hogy sorrendezett poligont kapjunk
+    var start_key: String = adjacency.keys()[0]
+    var prev_key: String = ""
+    var current_key: String = start_key
+    var polygon := PackedVector2Array()
+
+    for i in range(adjacency.size() + 2):
+        polygon.append(point_lookup[current_key])
+        var neighbors: Array = adjacency[current_key]
+        var next_key: String = ""
+        for n in neighbors:
+            if String(n) != prev_key:
+                next_key = String(n)
+                break
+
+        if next_key == "":
+            return PackedVector2Array()
+
+        if next_key == start_key:
+            if polygon.size() >= 3:
+                return polygon
+            return PackedVector2Array()
+
+        prev_key = current_key
+        current_key = next_key
+
+    return PackedVector2Array()
 
 
 func get_room_polygon() -> PackedVector2Array:
-    # Start from convex hull of wall endpoints
-    var poly: PackedVector2Array = _compute_room_polygon()
-    if poly.size() < 3:
-        return _compute_room_polygon()
-
-    # Check: every edge of the polygon must correspond to an actual wall segment
-    var eps := 1.0
-    var count_edges := poly.size()
-    for i in range(count_edges):
-        var a: Vector2 = poly[i]
-        var b: Vector2 = poly[(i + 1) % count_edges]
-        var edge_ok: bool = false
-
-        for w_var in walls:
-            var w: Dictionary = w_var
-            var p1: Vector2 = w.get("p1") as Vector2
-            var p2: Vector2 = w.get("p2") as Vector2
-
-            var match_ab := a.distance_to(p1) < eps and b.distance_to(p2) < eps
-            var match_ba := a.distance_to(p2) < eps and b.distance_to(p1) < eps
-            if match_ab or match_ba:
-                edge_ok = true
-                break
-
-        if not edge_ok:
-            # Not a closed room, return empty
-            return PackedVector2Array()
-
-    return poly
+    return _compute_room_polygon()
 
 func _draw_room_outline() -> void:
     var poly: PackedVector2Array = get_room_polygon()
