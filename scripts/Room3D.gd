@@ -85,9 +85,9 @@ func _create_wall_segment(a2d: Vector2, b2d: Vector2) -> void:
 	inst.transform.origin = pos
 
 	# Orientation: align with segment direction
-	var dir2d := (b2d - a2d).normalized()
-	var angle_y := atan2(dir2d.x, dir2d.y)  # Godot Z forward, X right
-	inst.rotation = Vector3(0.0, angle_y, 0.0)
+        var dir2d := (b2d - a2d).normalized()
+        var angle_y := atan2(dir2d.y, dir2d.x)  # align wall length with 2D segment direction
+        inst.rotation = Vector3(0.0, angle_y, 0.0)
 
 	walls_root.add_child(inst)
 
