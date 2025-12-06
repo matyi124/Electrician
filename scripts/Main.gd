@@ -21,7 +21,6 @@ var current_room_index: int = -1
 @onready var btn_3d: Button = $CanvasLayer/HBoxContainer/Button3D
 @onready var btn_save: Button = $CanvasLayer/HBoxContainer/ButtonSave
 @onready var btn_load: Button = $CanvasLayer/HBoxContainer/ButtonLoad
-@onready var door_window_panel: Window = $CanvasLayer/DoorWindowPanel
 
 var current_room_polygon: PackedVector2Array = PackedVector2Array()
 var in_3d: bool = false

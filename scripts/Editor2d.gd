@@ -3,6 +3,9 @@ extends Node2D
 ## 2D floor plan editor.
 ## Units: centimeters in world space.
 
+# -------------------------------------------------------------------
+# Signals and data model
+# -------------------------------------------------------------------
 signal room_selected(polygon: PackedVector2Array)
 signal project_changed
 signal opening_placed(is_door: bool)
@@ -99,6 +102,9 @@ var room_names: Array = []
 var selected_room_centroid: Vector2 = Vector2.ZERO
 var has_selected_room: bool = false
 
+# -------------------------------------------------------------------
+# UI setup
+# -------------------------------------------------------------------
 func _ready() -> void:
     set_process_unhandled_input(true)
     # Create a popup dialog for editing dimensions of walls, doors and windows.
@@ -213,8 +219,9 @@ func _on_resize_dialog_delete() -> void:
     _update_handles()
     resize_dialog.hide()
 
-
-
+# -------------------------------------------------------------------
+# Tool modes
+# -------------------------------------------------------------------
 func set_mode_none() -> void:
     mode = ToolMode.NONE
 
@@ -819,28 +826,6 @@ func select_last_opening(is_door: bool) -> void:
     _show_resize_dialog()
 
 
-func update_last_opening(is_door: bool, width_cm: float, height_cm: float, sill_cm: float) -> void:
-    if is_door:
-        if doors.size() == 0:
-            return
-        var d: Dictionary = doors[doors.size() - 1]
-        d["width_cm"] = width_cm
-        d["height_cm"] = height_cm
-        d["sill_cm"] = sill_cm
-        doors[doors.size() - 1] = d
-    else:
-        if windows.size() == 0:
-            return
-        var w: Dictionary = windows[windows.size() - 1]
-        w["width_cm"] = width_cm
-        w["height_cm"] = height_cm
-        w["sill_cm"] = sill_cm
-        windows[windows.size() - 1] = w
-    rooms_dirty = true
-    emit_signal("project_changed")
-    queue_redraw()
-
-
 ### handle drawing and editing -------------------------------------------------
 
 # Recompute the positions of the move and resize handles based on the
@@ -923,11 +908,17 @@ func _show_resize_dialog() -> void:
                 return
             entry = doors[selected_opening_idx]
             selected_is_door = true
+            lbl_sill.text = "Padlótól (cm):"
+            lbl_width.text = "Szélesség (cm):"
+            lbl_height.text = "Magasság (cm):"
         else:
             if selected_opening_idx < 0 or selected_opening_idx >= windows.size():
                 return
             entry = windows[selected_opening_idx]
             selected_is_door = false
+            lbl_sill.text = "Padlótól (cm):"
+            lbl_width.text = "Szélesség (cm):"
+            lbl_height.text = "Magasság (cm):"
         width_edit.text = str(entry.get("width_cm", 0.0))
         height_edit.text = str(entry.get("height_cm", 0.0))
         if selected_opening_type == "window":
@@ -942,9 +933,15 @@ func _show_resize_dialog() -> void:
             return
         selected_is_wall = true
         selected_is_door = false
-        width_edit.text = str(wall.get("thickness", 10.0))
-        height_edit.text = str(wall.get("height", 250.0))
+        var p1: Vector2 = wall.get("p1") as Vector2
+        var p2: Vector2 = wall.get("p2") as Vector2
+        var length_cm: float = p1.distance_to(p2)
+        var height_cm: float = float(wall.get("height", 250.0))
+        lbl_width.text = "Hossz (cm):"
+        lbl_height.text = "Magasság (cm):"
         sill_container.visible = false
+        width_edit.text = str(length_cm)
+        height_edit.text = str(height_cm)
         resize_dialog.popup_centered()
 
 
@@ -981,9 +978,13 @@ func _on_resize_dialog_confirmed() -> void:
     elif selected_wall_id != -1:
         var wdict: Dictionary = _get_wall_by_id(selected_wall_id) as Dictionary
         if wdict != null:
-            wdict["thickness"] = new_width
+            var p1: Vector2 = wdict.get("p1") as Vector2
+            var p2: Vector2 = wdict.get("p2") as Vector2
+            var dir: Vector2 = (p2 - p1).normalized()
+            if dir.length() < 0.001:
+                dir = Vector2.RIGHT
+            wdict["p2"] = p1 + dir * new_width
             wdict["height"] = new_height
-            # Write back into the walls array
             for i in range(walls.size()):
                 var tmp: Dictionary = walls[i]
                 if int(tmp.get("id", -1)) == selected_wall_id:
@@ -1003,12 +1004,6 @@ func _draw() -> void:
     _draw_walls()
     _draw_openings()          # FALAK FÖLÉ
     _draw_current_wall_preview()
-    _draw_handles()
-
-
-    # Draw handles for the currently selected element (if any).  These
-    # handles appear when no drawing tool is active and an element is
-    # selected.  They allow the user to move or resize the element.
     _draw_handles()
 
 
