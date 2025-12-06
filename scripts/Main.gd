@@ -47,10 +47,29 @@ func _ready() -> void:
     _show_2d()
 
 func _show_2d() -> void:
+    # Before returning to 2D, ensure the 3D controller exits inside view
+    # and restores default camera orbit.  This prevents the camera
+    # remaining locked when switching back to 3D later and avoids
+    # accidental clearing of geometry.
+    if room3d.has_method("exit_view"):
+        room3d.call("exit_view")
+
+    # Clear room selection in the 2D editor when switching back to 2D.  This
+    # prevents the previous selection from remaining highlighted when the
+    # user starts working on a new layout.
+    if editor2d.has_method("clear_selected_room"):
+        editor2d.call("clear_selected_room")
+
     editor2d.visible = true
     room3d.visible = false
     in_3d = false
     btn_3d.button_pressed = false
+
+    # Request a redraw on the 2D editor in case visibility toggle doesn't
+    # automatically trigger one.  Without this the grid and walls could
+    # appear blank until interacting with the scene.
+    if editor2d.has_method("queue_redraw"):
+        editor2d.call("queue_redraw")
 
 
 func _show_3d() -> void:
@@ -89,18 +108,19 @@ func _on_window_mode_pressed() -> void:
 
 
 func _on_3d_view_pressed() -> void:
+    # Ha már 3D-ben vagyunk, ugyanazzal a gombbal lépjünk vissza 2D-be
     if in_3d:
         _show_2d()
         return
 
-    var poly: PackedVector2Array = editor2d.call("get_room_polygon") as PackedVector2Array
-    if poly.size() == 0:
-        var polys: Array = editor2d.call("get_room_polygons") as Array
-        if polys.size() > 0:
-            poly = polys[0]
-
-    if poly.size() == 0:
-        push_warning("Nincs zárt szoba a 3D nézethez. Zárd körbe a falakat, és kattints egy szobára a kiválasztáshoz.")
+    # Attempt to use the currently selected room if available.  If no room has been
+    # selected via click, fall back to the largest detected room.
+    var poly: PackedVector2Array = current_room_polygon
+    if poly == null or poly.size() < 3:
+        # compute the largest room polygon if none selected
+        poly = editor2d.call("get_room_polygon") as PackedVector2Array
+    if poly.size() < 3:
+        push_warning("Nincs zárt szoba a 3D nézethez. Zárd körbe a falakat.")
         btn_3d.button_pressed = false
         return
 
@@ -114,9 +134,9 @@ func _on_3d_view_pressed() -> void:
         project_data.get("windows", []),
         project_data.get("devices", [])
     )
-
+    # Reset current_room_polygon after building 3D view
+    current_room_polygon = PackedVector2Array()
     _show_3d()
-
 
 func _on_opening_placed(is_door: bool) -> void:
     # Ajtó/ablak lerakása után automatikusan nyissuk meg a panelt
@@ -126,7 +146,8 @@ func _on_room_selected(polygon: PackedVector2Array) -> void:
     current_room_polygon = polygon
 
 func _on_project_changed() -> void:
-    current_room_polygon = PackedVector2Array()
+    # For auto-save later; currently empty.
+    pass
 
 func _on_save_pressed() -> void:
     editor2d.call("save_project")
