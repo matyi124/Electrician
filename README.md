@@ -37,11 +37,10 @@ A fő jelenet (`main2.tscn`) felépítése:
     - `HBoxContainer`
       - `ButtonWall` – **Fal rajzolása**
       - `ButtonDoor` – **Ajtó**
-      - `ButtonWindow` – **Ablak**
-      - `Button3D` – **3D nézet**
-      - `ButtonSave` – **Mentés**
-      - `ButtonLoad` – **Betöltés**
-    - `DoorWindowPanel` (Window) – felugró panel az ajtó/ablak méretekhez
+    - `ButtonWindow` – **Ablak**
+    - `Button3D` – **3D nézet**
+    - `ButtonSave` – **Mentés**
+    - `ButtonLoad` – **Betöltés**
 
 ### 2.1 Gombok viselkedése (Main.gd)
 
@@ -295,43 +294,15 @@ camera.look_at(Vector3.ZERO, Vector3.UP)
 
 ---
 
-## 6. Ajtó/ablak méretszerkesztő – door_window_panel.gd
+## 6. Méretek módosítása párbeszédablak
 
-A `DoorWindowPanel` egy `Window` típusú felugró ablak:
+Az `Editor2d.gd` egy nagyobb `AcceptDialog`-ot (`resize_dialog`) használ a falak, ajtók és ablakok méretének szerkesztésére. A mezők jelentése:
 
-- `WidthEdit` – szélesség (cm)
-- `HeightEdit` – magasság (cm)
-- `SillEdit` – parapet (cm)
-- `Button` – „OK” gomb
+- Szélesség / Hossz: ajtó- és ablaknyílásoknál a nyílás szélessége; falaknál a fal hossza.
+- Magasság: nyílások magassága vagy a fal magassága.
+- Padlótól: csak ablakoknál látszik; a parapet magassága.
 
-### 6.1 Nyitás
-
-A `Main.gd` figyeli az `opening_placed(is_door)` signalt:
-
-```gdscript
-func _on_opening_placed(is_door: bool) -> void:
-    door_window_panel.call("open_for_last_opening", is_door)
-```
-
-`open_for_last_opening`:
-
-1. Elmenti, hogy ajtó vagy ablak.
-2. Ha az input mezők üresek, kitölti alapértékekkel:
-   - ajtó: 90 / 210 / 0
-   - ablak: 120 / 120 / 90
-3. Fókusz a szélesség mezőre.
-4. `popup_centered()` – ablak középre nyitása.
-
-### 6.2 Mentés és bezárás
-
-- `OK` gomb vagy Enter bármelyik mezőben:
-  - `_apply_and_close()`:
-    - kiolvassa a három értéket float-ként,
-    - `editor2d.update_last_opening(is_door, width, height, sill)`
-    - `values_applied` signalt is kiadja (ha később még használni akarjuk),
-    - végül `hide()` – bezárja az ablakot.
-
-- Az X gomb a `close_requested` jelzésen keresztül csak `hide()`-ot hív, **nem** módosít semmit az adatokon.
+Az `opening_placed(is_door)` signalre a `Main.gd` kiválasztja a frissen lerakott nyílást, így azonnal felugrik ez a párbeszédablak a szerkesztéshez.
 
 ---
 

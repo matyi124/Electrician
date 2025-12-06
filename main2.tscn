@@ -1,7 +1,6 @@
-[gd_scene load_steps=3 format=3 uid="uid://d2dcrti0bw5fw"]
+[gd_scene load_steps=2 format=3 uid="uid://d2dcrti0bw5fw"]
 
 [ext_resource type="PackedScene" uid="uid://da73aqqgqmv7l" path="res://Main.tscn" id="1_oex3p"]
-[ext_resource type="Script" uid="uid://c3ej7tscj3o8p" path="res://scripts/door_window_panel.gd" id="2_dmrlw"]
 
 [node name="Main" instance=ExtResource("1_oex3p")]
 
@@ -43,28 +42,6 @@ text = "Szobák"
 layout_mode = 2
 disabled = true
 text = "Átnevezés"
-
-[node name="DoorWindowPanel" type="Window" parent="CanvasLayer" index="1"]
-oversampling_override = 1.0
-position = Vector2i(0, 36)
-script = ExtResource("2_dmrlw")
-
-[node name="VBoxContainer" type="VBoxContainer" parent="CanvasLayer/DoorWindowPanel" index="0"]
-offset_right = 40.0
-offset_bottom = 40.0
-
-[node name="WidthEdit" type="LineEdit" parent="CanvasLayer/DoorWindowPanel/VBoxContainer" index="0"]
-layout_mode = 2
-
-[node name="HeightEdit" type="LineEdit" parent="CanvasLayer/DoorWindowPanel/VBoxContainer" index="1"]
-layout_mode = 2
-
-[node name="SillEdit" type="LineEdit" parent="CanvasLayer/DoorWindowPanel/VBoxContainer" index="2"]
-layout_mode = 2
-
-[node name="Button" type="Button" parent="CanvasLayer/DoorWindowPanel/VBoxContainer" index="3"]
-layout_mode = 2
-text = "OK"
 
 [node name="RoomRenameDialog" type="AcceptDialog" parent="CanvasLayer" index="2"]
 
